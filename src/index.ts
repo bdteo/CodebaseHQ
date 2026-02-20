@@ -212,7 +212,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           priority_id: { type: 'number', description: 'New priority ID (get from get_ticket response)' },
           assignee_id: { type: 'number', description: 'New assignee user ID (from list_users). Use 0 to unassign.' },
           subject: { type: 'string', description: 'Rename the ticket to this new title' },
-          private: { type: 'boolean', description: 'If true, this note is only visible to your company (Percepticus), not the client' },
+          private: { type: 'boolean', description: 'If true, this note is only visible to your own company, not the client' },
         },
         required: defaultProject ? ['ticket_id'] : ['project', 'ticket_id'],
       },
