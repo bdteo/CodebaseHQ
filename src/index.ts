@@ -7,6 +7,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { CodebaseHQClient } from './codebasehq-api.js';
+import type { UserResponse } from './types.js';
 
 // Validate environment
 const account = process.env.CODEBASEHQ_ACCOUNT;
@@ -32,6 +33,25 @@ try {
   process.exit(1);
 }
 
+// User cache: userId -> display name
+const userCache = new Map<number, string>();
+
+async function loadProjectUsers(project: string): Promise<void> {
+  if (userCache.size > 0) return;
+  try {
+    const users = await client.getProjectUsers(project);
+    for (const u of users) {
+      userCache.set(u.id, `${u.first_name} ${u.last_name}`);
+    }
+  } catch {
+    // Non-critical, continue without cache
+  }
+}
+
+function getUserName(userId: number): string {
+  return userCache.get(userId) || `user-${userId}`;
+}
+
 // Helper: resolve project param (use default if not provided)
 function resolveProject(args: Record<string, unknown> | undefined): string {
   const project = args?.project as string | undefined;
@@ -50,6 +70,33 @@ const server = new Server(
     capabilities: {
       tools: {},
     },
+    instructions: `CodebaseHQ is a project management and ticketing platform (codebasehq.com). This MCP server provides access to the "${account}" account.${defaultProject ? ` The default project is "${defaultProject}" — you can omit the project parameter for most tools.` : ''}
+
+## Typical Workflows
+
+**Browse tickets:** search_tickets → get_ticket (for detail) → get_ticket_notes (for comments)
+**Find my work:** search_tickets with query "assignee:me status:open"
+**Update a ticket:** get_ticket first (to see current status/priority IDs), then update_ticket
+**Create a ticket:** Use list_users to find assignee IDs, then create_ticket
+**Recent activity:** get_activity to see what changed recently
+
+## Search Query Syntax (for search_tickets)
+- status:open, status:closed, status:New
+- priority:high, priority:Normal, priority:Critical
+- assignee:me, assignee:none, assignee:{username}
+- reporter:me, reporter:{username}
+- type:bug, type:Feature, type:Task
+- category:General
+- sort:priority, sort:updated, order:asc, order:desc
+- not-status:closed, not-priority:low
+- Combine: "assignee:me status:open sort:updated"
+- Pagination: 20 tickets per page, use page parameter
+
+## Important Notes
+- Ticket updates are done via notes (update_ticket posts a note and optionally changes fields)
+- get_ticket returns status.id, priority.id, category.id — use these IDs when updating
+- Web URLs are included in responses for easy browser access
+- The account URL pattern is: https://${account}.codebasehq.com/projects/{project}/tickets/{id}`,
   }
 );
 
@@ -62,7 +109,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: 'list_projects',
-      description: 'List all projects in the CodebaseHQ account',
+      description: 'List all projects in the CodebaseHQ account. Returns project name, permalink, status, and ticket counts. Use the permalink value as the "project" parameter in other tools.',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -71,47 +118,47 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'search_tickets',
-      description: 'Search tickets in a project. Supports query syntax: status:open, assignee:me, priority:high, category:General, type:bug, sort:priority, not-status:closed. Returns 20 per page.',
+      description: `List and search tickets in a project. Without a query, returns all tickets (newest first). Supports search syntax: "status:open", "assignee:me", "priority:high", "type:bug", "sort:updated order:desc". Combine filters: "assignee:me status:open sort:priority". Returns 20 per page.`,
       inputSchema: {
         type: 'object',
         properties: {
           project: { type: 'string', description: projectDesc },
           query: {
             type: 'string',
-            description: 'Search query (e.g. "status:open assignee:me", "priority:high", "status:open sort:updated")',
+            description: 'Search query. Examples: "status:open", "assignee:me status:open", "priority:high sort:updated", "not-status:closed". Omit to list all tickets.',
           },
-          page: { type: 'number', description: 'Page number (default: 1, 20 tickets per page)' },
+          page: { type: 'number', description: 'Page number (default: 1, 20 tickets per page). Returns 404 when past last page.' },
         },
         required: defaultProject ? [] : ['project'],
       },
     },
     {
       name: 'get_ticket',
-      description: 'Get full details of a specific ticket by ID',
+      description: 'Get full details of a specific ticket by its ID number. Returns status/priority/category with both name and numeric ID (use IDs for update_ticket). Also shows assignee, reporter, dates, tags, and time tracking.',
       inputSchema: {
         type: 'object',
         properties: {
           project: { type: 'string', description: projectDesc },
-          ticket_id: { type: 'number', description: 'Ticket ID number' },
+          ticket_id: { type: 'number', description: 'Ticket number (e.g. 23)' },
         },
         required: defaultProject ? ['ticket_id'] : ['project', 'ticket_id'],
       },
     },
     {
       name: 'get_ticket_notes',
-      description: 'Get notes/comments and attachments on a specific ticket',
+      description: 'Get the full conversation thread (notes/comments) on a ticket. Includes author name, content, timestamps, field change history, and file attachments with download URLs. Notes are in chronological order.',
       inputSchema: {
         type: 'object',
         properties: {
           project: { type: 'string', description: projectDesc },
-          ticket_id: { type: 'number', description: 'Ticket ID number' },
+          ticket_id: { type: 'number', description: 'Ticket number (e.g. 23)' },
         },
         required: defaultProject ? ['ticket_id'] : ['project', 'ticket_id'],
       },
     },
     {
       name: 'get_activity',
-      description: 'Get recent activity feed for a project (ticket creates, updates, comments). Returns 20 events per page.',
+      description: 'Get the recent activity feed for a project — shows who created/updated/commented on tickets and when. Returns 20 events per page, newest first. Useful for "what happened recently?" questions.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -122,35 +169,50 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
-      name: 'create_ticket',
-      description: 'Create a new ticket in a project',
+      name: 'list_users',
+      description: 'List all team members assigned to a project. Returns user IDs (needed for assignee_id in create_ticket/update_ticket), names, usernames, emails, and company. Call this before creating or assigning tickets.',
       inputSchema: {
         type: 'object',
         properties: {
           project: { type: 'string', description: projectDesc },
-          summary: { type: 'string', description: 'Ticket title/summary' },
-          description: { type: 'string', description: 'Detailed description (supports markdown)' },
-          ticket_type: { type: 'string', description: 'Type: Bug, Feature, or Task' },
-          priority_id: { type: 'number', description: 'Priority ID (get from ticket details to see available IDs)' },
-          assignee_id: { type: 'number', description: 'User ID to assign (get from project users)' },
+        },
+        required: defaultProject ? [] : ['project'],
+      },
+    },
+    {
+      name: 'create_ticket',
+      description: 'Create a new ticket in a project. Only "summary" is required — all other fields are optional and will use project defaults. Use list_users to find assignee_id values. Use get_ticket on any existing ticket to discover valid priority_id and category_id values.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          project: { type: 'string', description: projectDesc },
+          summary: { type: 'string', description: 'Ticket title (required)' },
+          description: { type: 'string', description: 'Detailed description of the issue or request' },
+          ticket_type: {
+            type: 'string',
+            description: 'Ticket type',
+            enum: ['Bug', 'Feature', 'Task'],
+          },
+          priority_id: { type: 'number', description: 'Priority ID number (get valid IDs from get_ticket on any existing ticket)' },
+          assignee_id: { type: 'number', description: 'User ID to assign to (get valid IDs from list_users)' },
         },
         required: defaultProject ? ['summary'] : ['project', 'summary'],
       },
     },
     {
       name: 'update_ticket',
-      description: 'Add a note/comment to a ticket and optionally change its status, priority, assignee, or subject. Changes are made by posting a ticket note.',
+      description: 'Update a ticket by posting a note. Can optionally change status, priority, assignee, or rename the ticket in the same operation. At minimum provide content (comment text) or a field change. Use get_ticket first to see current field IDs.',
       inputSchema: {
         type: 'object',
         properties: {
           project: { type: 'string', description: projectDesc },
-          ticket_id: { type: 'number', description: 'Ticket ID number' },
-          content: { type: 'string', description: 'Comment/note text' },
-          status_id: { type: 'number', description: 'New status ID' },
-          priority_id: { type: 'number', description: 'New priority ID' },
-          assignee_id: { type: 'number', description: 'New assignee user ID (use 0 to unassign)' },
-          subject: { type: 'string', description: 'New ticket title/summary' },
-          private: { type: 'boolean', description: 'Make this note private (visible only to your company)' },
+          ticket_id: { type: 'number', description: 'Ticket number to update' },
+          content: { type: 'string', description: 'Comment/note text to add to the ticket' },
+          status_id: { type: 'number', description: 'New status ID (get from get_ticket response)' },
+          priority_id: { type: 'number', description: 'New priority ID (get from get_ticket response)' },
+          assignee_id: { type: 'number', description: 'New assignee user ID (from list_users). Use 0 to unassign.' },
+          subject: { type: 'string', description: 'Rename the ticket to this new title' },
+          private: { type: 'boolean', description: 'If true, this note is only visible to your company (Percepticus), not the client' },
         },
         required: defaultProject ? ['ticket_id'] : ['project', 'ticket_id'],
       },
@@ -242,11 +304,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const ticketId = args?.ticket_id as number;
         if (!ticketId) throw new Error('ticket_id is required');
 
+        await loadProjectUsers(project);
         const notes = await client.getTicketNotes(project, ticketId);
         const formatted = notes.map(n => ({
           id: n.ticket_note.id,
+          author: getUserName(n.ticket_note.user_id),
           content: n.ticket_note.content,
-          user_id: n.ticket_note.user_id,
           created_at: n.ticket_note.created_at,
           updates: n.ticket_note.updates !== '{}' ? n.ticket_note.updates : undefined,
           attachments: n.ticket_note.attachments.length > 0
@@ -269,14 +332,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const events = await client.getActivity(project, page);
         const formatted = events.map(e => ({
-          title: e.title,
-          type: e.type,
-          timestamp: e.timestamp,
-          actor: e.actor_name,
+          title: e.event.title,
+          type: e.event.type,
+          timestamp: e.event.timestamp,
+          actor: e.event.actor_name,
         }));
 
         return {
           content: [{ type: 'text', text: JSON.stringify({ page, events: formatted }, null, 2) }],
+        };
+      }
+
+      case 'list_users': {
+        const project = resolveProject(args);
+        const users = await client.getProjectUsers(project);
+        const formatted = users.map((u: UserResponse) => ({
+          id: u.id,
+          name: `${u.first_name} ${u.last_name}`,
+          username: u.username,
+          email: u.email_address,
+          company: u.company,
+        }));
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(formatted, null, 2) }],
         };
       }
 
@@ -298,6 +377,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             created: true,
             ticket_id: ticket.ticket_id,
             summary: ticket.summary,
+            status: ticket.status.name,
             url: `https://${account}.codebasehq.com/projects/${project}/tickets/${ticket.ticket_id}`,
           }, null, 2) }],
         };

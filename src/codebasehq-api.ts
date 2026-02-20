@@ -3,7 +3,7 @@ import type {
   TicketWrapper,
   TicketNoteWrapper,
   TicketResponse,
-  ActivityEvent,
+  ActivityEventWrapper,
   UserResponse,
 } from './types.js';
 
@@ -67,8 +67,8 @@ export class CodebaseHQClient {
     return this.request<TicketNoteWrapper[]>(`/${project}/tickets/${ticketId}/notes`);
   }
 
-  async getActivity(project: string, page: number = 1): Promise<ActivityEvent[]> {
-    return this.request<ActivityEvent[]>(`/${project}/activity?page=${page}`);
+  async getActivity(project: string, page: number = 1): Promise<ActivityEventWrapper[]> {
+    return this.request<ActivityEventWrapper[]>(`/${project}/activity?page=${page}`);
   }
 
   async getProjectUsers(project: string): Promise<UserResponse[]> {

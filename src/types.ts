@@ -70,6 +70,10 @@ export interface TicketAttachment {
   url: string;
 }
 
+export interface ActivityEventWrapper {
+  event: ActivityEvent;
+}
+
 export interface ActivityEvent {
   id: number;
   title: string;
