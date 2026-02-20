@@ -13,8 +13,7 @@
   "author": "boris.teoharov",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
-    "fast-xml-parser": "^5.2.0"
+    "@modelcontextprotocol/sdk": "^1.0.4"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

@@ -1,6 +1,11 @@
-// CodebaseHQ API Types
+// CodebaseHQ API Types (JSON responses)
 
-export interface CodebaseProject {
+export interface ProjectWrapper {
+  project: ProjectResponse;
+}
+
+export interface ProjectResponse {
+  project_id: number;
   name: string;
   permalink: string;
   status: string;
@@ -9,76 +14,81 @@ export interface CodebaseProject {
   closed_tickets: number;
 }
 
-export interface CodebaseTicket {
+export interface TicketWrapper {
+  ticket: TicketResponse;
+}
+
+export interface TicketResponse {
   ticket_id: number;
   summary: string;
-  status: { name: string };
-  priority: { name: string };
-  assignee?: { first_name: string; last_name: string };
-  reporter: { first_name: string; last_name: string };
-  category?: { name: string };
-  milestone?: { name: string };
+  ticket_type: string;
+  reporter_id: number;
+  reporter: string;
+  assignee_id: number | null;
+  assignee: string | null;
+  category_id: number;
+  category: { id: number; name: string };
+  priority_id: number;
+  priority: { id: number; name: string; colour: string };
+  status_id: number;
+  status: { id: number; name: string; colour: string; order: number; 'treat-as-closed': boolean };
+  type_id: number;
+  type: { id: number; name: string; icon: string };
+  milestone_id: number | null;
+  milestone: { id: number; name: string } | null;
+  tags: string;
+  start_on: string | null;
+  deadline: string | null;
+  estimated_time: number | null;
+  total_time_spent: number;
+  project_id: number;
   created_at: string;
   updated_at: string;
 }
 
-export interface CodebaseRepository {
-  name: string;
-  permalink: string;
-  scm: string;
-  clone_url: string;
+export interface TicketNoteWrapper {
+  ticket_note: TicketNoteResponse;
 }
 
-export interface CodebaseMilestone {
-  id: number;
-  name: string;
-  status: string;
-  estimated_completion_date?: string;
-}
-
-export interface CodebaseTicketNote {
+export interface TicketNoteResponse {
   id: number;
   content: string;
-  author: { first_name: string; last_name: string };
+  user_id: number;
   created_at: string;
   updated_at: string;
-  changes?: Record<string, string>;
+  updates: string;
+  company_id: number | null;
+  attachments: TicketAttachment[];
 }
 
-export interface CodebaseTimeSession {
+export interface TicketAttachment {
   id: number;
-  summary: string;
-  minutes: number;
-  user: { first_name: string; last_name: string };
-  session_date: string;
+  identifier: string;
+  'file-name': string;
+  'content-type': string;
+  'file-size': number;
+  url: string;
 }
 
-// Formatted responses for MCP tools
-
-export interface FormattedProject {
-  name: string;
-  permalink: string;
-  status: string;
-  open_tickets: number;
-  closed_tickets: number;
+export interface ActivityEvent {
+  id: number;
+  title: string;
+  type: string;
+  timestamp: string;
+  html_title: string;
+  html_text: string;
+  user_id: number;
+  actor_email: string;
+  actor_name: string;
+  project_id: number;
+  deleted: boolean;
 }
 
-export interface FormattedTicket {
-  ticket_id: number;
-  summary: string;
-  status: string;
-  priority: string;
-  assignee?: string;
-  reporter: string;
-  category?: string;
-  milestone?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface FormattedRepository {
-  name: string;
-  permalink: string;
-  scm: string;
-  clone_url: string;
+export interface UserResponse {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  email_address: string;
+  company: string;
 }
