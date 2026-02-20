@@ -1,0 +1,23 @@
+{
+  "name": "codebasehq",
+  "version": "1.0.0",
+  "description": "MCP server for CodebaseHQ project management and repository hosting",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepare": "npm run build"
+  },
+  "keywords": ["mcp", "codebasehq", "project-management"],
+  "author": "boris.teoharov",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "fast-xml-parser": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3"
+  }
+}
