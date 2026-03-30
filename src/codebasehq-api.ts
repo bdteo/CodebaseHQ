@@ -1,3 +1,5 @@
+import { writeFile, mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import type {
   ProjectWrapper,
   TicketWrapper,
@@ -126,6 +128,23 @@ export class CodebaseHQClient {
 
     const xml = `<ticket-note>${parts.join('')}</ticket-note>`;
     return this.request(`/${project}/tickets/${ticketId}/notes`, 'POST', xml);
+  }
+
+  // === ATTACHMENTS ===
+
+  async downloadAttachment(url: string, destPath: string): Promise<{ size: number }> {
+    const response = await fetch(url, {
+      headers: { 'Authorization': this.authHeader },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Download failed (${response.status}): ${url}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await mkdir(dirname(destPath), { recursive: true });
+    await writeFile(destPath, buffer);
+    return { size: buffer.length };
   }
 }
 

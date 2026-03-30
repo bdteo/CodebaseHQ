@@ -217,6 +217,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: defaultProject ? ['ticket_id'] : ['project', 'ticket_id'],
       },
     },
+    {
+      name: 'download_attachment',
+      description: 'Download one or more ticket attachments to local disk. Provide an array of {url, path} pairs. URLs come from get_ticket_notes attachment responses. Creates parent directories automatically.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          files: {
+            type: 'array',
+            description: 'Array of files to download',
+            items: {
+              type: 'object',
+              properties: {
+                url: { type: 'string', description: 'Attachment URL from get_ticket_notes' },
+                path: { type: 'string', description: 'Absolute destination file path' },
+              },
+              required: ['url', 'path'],
+            },
+          },
+        },
+        required: ['files'],
+      },
+    },
   ],
 }));
 
@@ -404,6 +426,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             updated: true,
             ticket_id: ticketId,
             url: `https://${account}.codebasehq.com/projects/${project}/tickets/${ticketId}`,
+          }, null, 2) }],
+        };
+      }
+
+      case 'download_attachment': {
+        const files = args?.files as Array<{ url: string; path: string }>;
+        if (!files || files.length === 0) throw new Error('files array is required');
+
+        const results = await Promise.all(
+          files.map(async (f) => {
+            try {
+              const { size } = await client.downloadAttachment(f.url, f.path);
+              return { path: f.path, size, ok: true };
+            } catch (error) {
+              return { path: f.path, error: error instanceof Error ? error.message : String(error), ok: false };
+            }
+          })
+        );
+
+        const succeeded = results.filter(r => r.ok).length;
+        return {
+          content: [{ type: 'text', text: JSON.stringify({
+            downloaded: succeeded,
+            failed: results.length - succeeded,
+            files: results,
           }, null, 2) }],
         };
       }
