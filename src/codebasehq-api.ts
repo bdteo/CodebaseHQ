@@ -133,7 +133,15 @@ export class CodebaseHQClient {
   // === ATTACHMENTS ===
 
   async downloadAttachment(url: string, destPath: string): Promise<{ size: number }> {
-    const response = await fetch(url, {
+    // Rewrite web frontend URLs to API download URLs
+    // Web: https://{account}.codebasehq.com/upload/{id}/show/original
+    // API: https://api3.codebasehq.com/uploads/{id}
+    const uploadMatch = url.match(/codebasehq\.com\/upload\/([a-f0-9-]+)/);
+    const downloadUrl = uploadMatch
+      ? `${this.baseUrl}/uploads/${uploadMatch[1]}`
+      : url;
+
+    const response = await fetch(downloadUrl, {
       headers: { 'Authorization': this.authHeader },
     });
 
